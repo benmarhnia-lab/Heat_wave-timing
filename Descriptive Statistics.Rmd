@@ -1,0 +1,191 @@
+---
+title: "Data Management and Stats Desc"
+author: "Anna Alari"
+date: "4/4/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+
+```{r, echo=FALSE, warning = FALSE, message=FALSE}
+library(xlsx)
+library(Hmisc)
+library(lubridate)
+library(effects)
+library(ggplot2)
+library(prettyR)
+library(segmented)
+library(ggeffects)
+library(devtools)
+library(zoo)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library("writexl")
+library(hrbrthemes)
+library(tidyverse)
+library(ggridges)
+library(viridis)
+library(ggpubr)
+library(R.utils)
+library(meta)
+library(jtools)
+library(huxtable)
+```
+
+I create the database by merging data from CEPEM project and data from CEPIDC: 
+
+```{r, warning = FALSE}
+# I load the final data
+
+load("C:/Users/aalari/Dropbox/Noemie/FInal Analysis - SpF + CepiDC/villes_s.RData")
+
+```
+
+
+## Summary Statistics for Mortality during summer period
+
+```{r, echo=FALSE}
+varbl<-c("Dates", "Zone", "cv_tot","respi_tot","tempmin","tempmax","tempmoy","heat_wave", "mois")
+
+villes_sub<-lapply(villes_s,function(x){x[,varbl]})
+
+data<-rbind(villes_sub[["avignon"]],villes_sub[["BM"]], villes_sub[["bordeaux"]],villes_sub[["clermont"]],villes_sub[["dijon"]],villes_sub[["grenoble"]], villes_sub[["lehavre"]], villes_sub[["lille"]],villes_sub[["lyon"]],villes_sub[["marseille"]],villes_sub[["montpellier"]],villes_sub[["nancy"]],villes_sub[["nantes"]],villes_sub[["nice"]],villes_sub[["paris"]],villes_sub[["rennes"]],villes_sub[["rouen"]],villes_sub[["saint_etienne"]],villes_sub[["strasbourg"]],villes_sub[["toulon"]],villes_sub[["toulouse"]])
+
+
+data <- data %>% group_by(Zone)
+
+data <- data %>% filter(mois %in% c("6","7","8"))
+```
+
+```{r, echo=FALSE}
+library(gdata)
+
+levels(data$Zone)
+data$Zone<-as.factor(as.character(data$Zone))
+
+order<-c("bordeaux","lehavre","ntes","rennes","rouen","clermont","dijon","grenoble","lyon","ncy","saint-etienne", "strasbourg","bm","lille", "paris","toulouse","avignon","marseille","montpellier","nice","toulon")
+
+data$Zone <- reorder.factor(data$Zone, new.order=order)
+
+levels(data$Zone)
+
+data$Zone<-factor(data$Zone,levels(data$Zone), labels=c("Bordeaux","Le Havre","Nantes","Rennes","Rouen","Clermont-Ferrant","Dijon","Grenoble","Lyon","Nancy","Saint-Etienne", "Strasbourg","Douai-Lens","Lille", "Paris","Toulouse","Avignon","Marseille","Montpellier","Nice","Toulon")) 
+
+order<-c("Bordeaux","Le Havre","Nantes","Rennes","Rouen","Clermont-Ferrant","Dijon","Grenoble","Lyon","Nancy","Saint-Etienne", "Strasbourg","Douai-Lens","Lille", "Paris","Toulouse","Avignon","Marseille","Montpellier","Nice","Toulon")
+
+levels(data$Zone)
+
+```
+
+```{r, echo=FALSE}
+tabmort<-data %>% summarise(
+  'Min Cv'=min(cv_tot,na.rm=TRUE),
+  'Mean Cv'=mean(cv_tot,na.rm=TRUE),
+  'Max Cv'=max(cv_tot,na.rm=TRUE),
+  'Min Respi'=min(respi_tot,na.rm=TRUE),
+  'Mean Respi'=mean(respi_tot,na.rm=TRUE),
+  'Max Respi'=max(respi_tot,na.rm=TRUE),
+    )
+
+tabmort %>% kable(caption = "Mortality per City") %>% kable_styling(bootstrap_options = c("hover", "condensed","bordered"),full_width = F)%>% add_header_above(c(" ", "Cardiovascual Causes" = 3, "Respiratory causes"=3))%>%
+  column_spec(1, bold = T, border_right = T)%>%
+  column_spec(4, border_right = T)
+```
+\  
+\  
+
+Heat waves episodes in 20 different cities in French during the period going from 2000 to 2015 were identified: 
+
+```{r, echo=FALSE}
+N_HeatWave<-matrix(NA,nrow = 21,ncol=4)
+colnames(N_HeatWave)<-c("city","June","July","August")
+N_HeatWave[,1]<-names(villes_s)
+
+for (i in (1:length(villes_s))){
+N_HeatWave[i,2:4]<-as.numeric(t(villes_s [[i]]%>% group_by(mois)%>% summarise(
+  N_HeatWave = sum(heat_wave)))[2,])
+}  
+N_HeatWave%>% kable(caption = "Number of Heat Waves per city and per Month, 2000-2015")%>% kable_styling(bootstrap_options = c("hover", "condensed","bordered"),full_width = F)
+  
+```
+\  
+\  
+
+
+### Mortality during summer period for non heat wave days and for heat wave days
+
+#### *Cardiovascular Mortality*
+
+```{r,echo=FALSE,warning=FALSE, fig.dim = c(8, 8)}
+
+data$heat_wave<-as.factor(as.character(data$heat_wave))
+
+data <- data %>% group_by(heat_wave,Zone)
+
+ggplot(data, aes(x="", y=cv_tot, fill=heat_wave)) + 
+    geom_boxplot() + xlab("")+ ylab("Cardiovascular Deaths")+ 
+  labs(x = "") +
+    facet_wrap(~Zone, scale="free") + scale_fill_manual(values=c("cyan3", "coral1")) 
+
+```
+\  
+\  
+
+#### *Respiratory Mortality*
+
+```{r,echo=FALSE,warning=FALSE, fig.dim = c(8, 8)}
+
+ggplot(data, aes(x="", y=respi_tot, fill=heat_wave)) + 
+    geom_boxplot() + xlab("")+ ylab("Respiratory Deaths")+ 
+  labs(x = "") +
+    facet_wrap(~Zone, scale="free")+ scale_fill_manual(values=c("cyan3", "coral1"))
+
+```
+
+
+
+## Summary Statistics for Temperature during summer period
+
+
+
+### Average Temperature Distribution during summer period
+
+```{r, fig.width=8, fig.height=8, fig.align = "center", echo=FALSE}
+data$Zone <- reorder.factor(data$Zone, new.order=rev(order))
+
+ggplot(data, aes(x = tempmoy, y = Zone, fill=..x..)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_fill_viridis(option = "B") + xlab("Temperature [°C]") + 
+  ylab("Urban Agglomeration") +
+  theme_ipsum() +
+    theme(
+      legend.position="none",
+      panel.spacing = unit(0.1, "lines"),
+      strip.text.x = element_text(size = 8)
+    )
+```
+
+## Descriptive Statistics
+
+```{r}
+data<-data %>% ungroup()
+data<-data %>% group_by(Zone)
+
+data$Zone <- reorder.factor(data$Zone, new.order=order)
+
+tabdesc<-data %>% summarise(
+  'Temp 25 Perc'=quantile(tempmoy, na.rm=TRUE)[2],
+  'Median Temp'=median(tempmoy, na.rm=TRUE),
+  'Temp 75 Perc'=quantile(tempmoy, na.rm=TRUE)[4],
+      )
+
+tabdesc[,2:4]<-round(tabdesc[,2:4],digits = 2)
+tabdesc %>% kable(caption = "Average Temperature statistics per City during summer period") %>% kable_styling(bootstrap_options = c("hover", "condensed","bordered"),full_width = F)%>% add_header_above(c(" ", "Average Temperature" = 3))%>%
+  column_spec(1, bold = T, border_right = T)%>%
+  column_spec(4, border_right = T)
+```
+

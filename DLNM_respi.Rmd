@@ -1,0 +1,546 @@
+---
+title: "Effect of different Heat wave timing on respiratory mortality in France with DLNM -  sensitivity analysis"
+author: "Anna Alari and Noemie Letellier"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+```
+
+
+```{r, echo=FALSE, warning = FALSE, message=FALSE}
+library(xlsx)
+library(Hmisc)
+library(lubridate)
+library(effects)
+library(ggplot2)
+library(prettyR)
+library(segmented)
+library(splines)
+library(mgcViz)
+library(ggeffects)
+library(devtools)
+library(zoo)
+library(mvmeta)
+library(dlnm)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library("writexl")
+library(metafor)
+library(forestplot)
+library("writexl")
+library(hrbrthemes)
+library(tidyverse)
+library(ggridges)
+library(viridis)
+library(ggpubr)
+library(R.utils)
+library(meta)
+library(jtools)
+library(huxtable)
+
+load("C:/Users/aalari/Dropbox/Noemie/FInal Analysis - SpF + CepiDC/villes_s.RData")
+
+```
+
+
+```{r, echo=FALSE}
+# 1. SPECIFICATION PARAMETERS OF THE EXPOSURE-RESPONSE DIMENSION OF THE CROSS-BASIS
+names(villes_s)[2]<-"douai-lens"
+mft <-lapply(villes_s,function(x){median(x$tempmoy,na.rm=TRUE)}) 
+```
+
+
+
+
+
+## 1. FIRST STAGE ANALYSIS: Estimation of the exposure-response associations at city level for 2 periods of the summer
+
+I decided to exclude the months of may and September, when extreme heat event never happen in France. 
+Then I define two periods of the summer:  
+- 1st part of the summer: 1st of june until 15th of July
+- 2nd part of the summer: From 16th of July until end of August
+
+
+```{r}
+
+# Create an database for each period
+summer1<-list()
+summer2<-list()
+
+
+for (i in 1:length(villes_s)){
+  summer1[[i]]<-villes_s[[i]][which(villes_s[[i]]$day > 31 & villes_s[[i]]$day<77),]
+  summer1[[i]]$time<-1:nrow(summer1[[i]])
+  summer2[[i]]<-villes_s[[i]][which(villes_s[[i]]$day > 76 & villes_s[[i]]$day<124),]
+  summer2[[i]]$time<-1:nrow(summer2[[i]])
+  }
+
+names(summer1)<-names(villes_s)
+names(summer2)<-names(villes_s)
+
+```
+
+
+#### Defintion of the cross-basis function (with its two dimensions) for the temperature of each month:
+
+```{r}
+# 1. SPECIFICATION PARAMETERS OF THE EXPOSURE-RESPONSE DIMENSION OF THE CROSS-BASIS
+
+argvar_summer<-list()
+
+for (i in 1: length(villes_s)){
+argvar_summer[[i]] <- list(fun="ns", knots = quantile(villes_s[[i]]$tempmoy,c(50,90)/100, na.rm=T),
+  Bound=range(villes_s[[i]]$tempmoy,na.rm=T))
+}
+
+names(argvar_summer)<-names(villes_s)
+
+# 2. SPECIFICATION PARAMETERS OF THE LAG-ASSOCIATION DIMENSION OF THE CROSS-BASIS
+# Definition of the maximum lag: I chose 7 days
+maxlag <- 5
+
+arglag <- list(fun="ns",knots=logknots(maxlag,nk=2))
+
+# - CREATE CROSSBASIS OBJECTS
+cb_summer1<-list()
+cb_summer2<-list()
+
+for (i in 1: length(villes_s)){
+cb_summer1[[i]] <- crossbasis(summer1[[i]]$tempmoy,maxlag,argvar_summer[[i]],arglag, group=summer1[[i]]$year)  
+cb_summer2[[i]] <- crossbasis(summer2[[i]]$tempmoy,maxlag,argvar_summer[[i]],arglag, group=summer2[[i]]$year)  
+}
+
+names(cb_summer1)<-names(villes_s)
+names(cb_summer2)<-names(villes_s)
+```
+
+#### Fit the models for each city and each period for RESPIRATORY DEATHS
+Include in the models the crossbasis term of temperature, along with the indicator for day of the week (Jours), bank holidays (Vacances) and natural cubic spline of time with 8 df per year.
+
+```{r}
+mod_summer1<-list()
+mod_summer2<-list()
+
+for (i in 1: length(villes_s)){
+cb_func1<-cb_summer1[[i]]
+mod_summer1[[i]] <- glm(respi_tot ~ cb_func1 + Jours + ns(day, 4) + ns(time,3), data=summer1[[i]], family=quasipoisson)
+cb_func2<-cb_summer2[[i]]
+mod_summer2[[i]] <- glm(respi_tot ~ cb_func2 + Jours + ns(day, 4) + ns(time,3), data=summer2[[i]], family=quasipoisson)
+}
+
+```
+
+### Get predictions for each model centering on median value:
+
+```{r}
+pred_summer1<-list()
+pred_summer2<-list()
+
+for (i in 1: length(villes_s)){
+  pred_summer1[[i]] <- crosspred(cb_func1, mod_summer1[[i]],cen=mft[[i]], by=1)
+  pred_summer2[[i]] <- crosspred(cb_func2, mod_summer2[[i]],cen=mft[[i]], by=1)
+  }
+```
+
+
+### Plot of OVERALL curves WITH DIFFERENT FUNCTION FOR EACH PERIOD, in each location
+
+
+We compare the different shapes of the cumulative exposure-response association (in terms of relative risks (RR) and centered in the mft) across the 7 days of lag, estimated for each period of the summer
+
+```{r, echo = FALSE}
+xlab <- expression(paste("Temperature (˚C)"))
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+for (i in 1:6){
+plot(pred_summer1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7), xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(pred_summer2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(pred_summer1[[7]],"overall",col="blue",axes=T,lab=c(6,5,7), ylim=c(0,4), xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[7])
+lines(pred_summer2[[7]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+for (i in 8:12){
+#par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(pred_summer1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7), xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(pred_summer2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+for (i in 13:15){
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(pred_summer1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(pred_summer2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(pred_summer1[[16]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(0, 4), main=names(villes_s)[16])
+lines(pred_summer2[[16]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+for (i in 17:18){
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(pred_summer1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(pred_summer2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+for (i in 19:21){
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(pred_summer1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", main=names(villes_s)[i], ci.arg=list(density=20,angle=-45,col=4))
+lines(pred_summer2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+```
+
+## 2. Second stage analysis to obtain pooled estimates
+
+The set of 20 coefficients of the cross-basis in each city are then reduced. We reduce the fit of a bi-dimensional DLNM to summaries expressed by parameters of one-dimensional basis. 
+
+```{r}
+####################################################################
+# BUILT OBJECTS WHERE RESULTS WILL BE STORED
+#   y- IS THE MATRIX FOR THE OUTCOME PARAMETERS
+#   S- IS THE LISTS OF (CO)VARIANCE MATRICES
+
+# OVERALL CUMULATIVE SUMMARIES
+yall1 <- matrix(NA,length(villes_s),3,dimnames=list(names(villes_s),paste("b",seq(3),sep="")))
+yall2 <- matrix(NA,length(villes_s),3,dimnames=list(names(villes_s),paste("b",seq(3),sep="")))
+
+# (CO)VARIANCE MATRICES
+cov1 <- vector("list",length(villes_s))
+cov2 <- vector("list",length(villes_s))
+
+names(cov1)<-names(cov2) <- names(villes_s)
+
+for (i in 1: length(villes_s)){
+    cb_func1<-cb_summer1[[i]]
+    red_par1 <- crossreduce(cb_func1,mod_summer1[[i]], cen=mft[[i]])
+    yall1[i,] <- coef(red_par1)  #I STORE THE RESULTS for the OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
+    cov1[[i]] <- vcov(red_par1)  # I store the covariance matrix
+    cb_func2<-cb_summer2[[i]]
+    red_par2 <- crossreduce(cb_func2,mod_summer2[[i]], cen=mft[[i]])
+    yall2[i,] <- coef(red_par2)
+    cov2[[i]] <- vcov(red_par2)
+    }
+
+```
+
+For each city we derive the vector with 4 reduced parameters of the natural spline of temperature for the overall cumulative summary association. 
+
+
+Then we: 
+
+- 2a. RUN THE MULTIVARIATE META-ANALYTICAL MODELS WITH mvmeta
+- 2b. Obtain BLUP predictions for each location
+- 2c. CREATE BASIS VARIABLES USING onebasis, TO BE USED FOR PREDICTION
+- 2d. OBTAIN PREDICTIONS THROUGH crosspred (dlnm)
+
+### 2a. META-ANALYTICAL MODELS:
+
+```{r}
+library(mvmeta)
+library(mixmeta)
+
+# OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
+mvall1 <- mvmeta(yall1,cov1, method="ml")
+mvall2 <- mvmeta(yall2,cov2,method="ml")
+
+summary(mvall1)
+summary(mvall2)
+```
+### 2b. BLUP PREDICTIONS for each city
+
+```{r}
+blup1<-blup(mvall1, vcov=T)
+blup2<-blup(mvall2, vcov=T)
+
+```
+
+
+
+```{r}
+# CREATE BASES FOR PREDICTION
+
+# BASES OF TEMPERATURE AND LAG USED TO PREDICT, EQUAL TO THAT USED FOR ESTIMATION
+# COMPUTED USING THE ATTRIBUTES OF THE CROSS-BASIS USED IN ESTIMATION
+
+x<-lapply(villes_s,function(x){x[,"tempmoy"]})
+tempall<-rbind(x[["avignon"]],x[["douai-lens"]],x[["bordeaux"]],x[["clermont"]],x[["dijon"]],x[["grenoble"]], x[["lehavre"]], x[["lille"]],x[["lyon"]],x[["marseille"]], x[["montpellier"]],x[["nancy"]],x[["nantes"]],x[["nice"]],x[["paris"]],x[["rennes"]],x[["rouen"]],x[["saint_etienne"]],x[["strasbourg"]],x[["toulon"]],x[["toulouse"]])
+
+x_1<-lapply(summer1,function(x){x[,"tempmoy"]})
+tempall_1<-rbind(x_1[["avignon"]],x_1[["douai-lens"]],x_1[["bordeaux"]],x_1[["clermont"]],x_1[["dijon"]],x_1[["grenoble"]], x_1[["lehavre"]], x_1[["lille"]],x_1[["lyon"]],x_1[["marseille"]], x_1[["montpellier"]],x_1[["nancy"]],x_1[["nantes"]],x_1[["nice"]],x_1[["paris"]],x_1[["rennes"]],x_1[["rouen"]],x_1[["saint_etienne"]],x_1[["strasbourg"]],x_1[["toulon"]],x_1[["toulouse"]])
+
+x_2<-lapply(summer2,function(x){x[,"tempmoy"]})
+tempall_2<-rbind(x_2[["avignon"]],x_2[["douai-lens"]],x_2[["bordeaux"]],x_2[["clermont"]],x_2[["dijon"]],x_2[["grenoble"]], x_2[["lehavre"]], x_2[["lille"]],x_2[["lyon"]],x_2[["marseille"]], x_2[["montpellier"]],x_2[["nancy"]],x_2[["nantes"]],x_2[["nice"]],x_2[["paris"]],x_2[["rennes"]],x_2[["rouen"]],x_2[["saint_etienne"]],x_2[["strasbourg"]],x_2[["toulon"]],x_2[["toulouse"]])
+
+
+xvar <- seq(min(tempall, na.rm=TRUE),max(tempall, na.rm=TRUE),by=0.1)
+xvar_1 <- seq(min(tempall_1, na.rm=TRUE),max(tempall_1, na.rm=TRUE),by=0.1)
+xvar_2 <- seq(min(tempall_2, na.rm=TRUE),max(tempall_2, na.rm=TRUE),by=0.1)
+
+bvar <- onebasis(xvar, "ns", knots = quantile(tempall,c(50,90)/100, na.rm=T),
+  Bound=range(tempall,na.rm=T))
+bvar_1 <- onebasis(xvar_1, "ns", knots = quantile(tempall_1,c(50,90)/100, na.rm=T),
+  Bound=range(tempall_1,na.rm=T))
+bvar_2 <- onebasis(xvar_2, "ns", knots = quantile(tempall_2,c(50,90)/100, na.rm=T),
+  Bound=range(tempall_2,na.rm=T))
+
+
+####################################################################
+# City-SPECIFIC FIRST-STAGE SUMMARIES
+
+cityall1 <- apply(yall1,1,function(x) exp(bvar_1%*%x))
+cityall2 <- apply(yall2,1,function(x) exp(bvar_2%*%x))
+
+####################################################################
+```
+
+
+```{r}
+cityblp1<-list()
+cityblp2<-list()
+
+for (i in 1:length(villes_s)){
+  
+  cb_summer1 <- onebasis(summer1[[i]]$tempmoy, "ns", knots = quantile(summer1[[i]]$tempmoy,c(50,90)/100, na.rm=T),
+  Bound=range(summer1[[i]]$tempmoy,na.rm=T))  
+  cb_summer2 <- onebasis(summer2[[i]]$tempmoy, "ns", knots = quantile(summer2[[i]]$tempmoy,c(50,90)/100, na.rm=T),
+  Bound=range(summer2[[i]]$tempmoy,na.rm=T))
+
+ cityblp1[[i]] <- crosspred(cb_summer1, coef=blup1[[i]]$blup,vcov=blup1[[i]]$vcov, model.link="log",by=0.1,from=min(summer1[[i]]$tempmoy, na.rm=TRUE),to=max(summer1[[i]]$tempmoy, na.rm=TRUE), cen=median(summer1[[i]]$tempmoy, na.rm=TRUE))
+
+ cityblp2[[i]] <- crosspred(cb_summer2, coef=blup2[[i]]$blup,vcov=blup2[[i]]$vcov, model.link="log",by=0.1,from=min(summer2[[i]]$tempmoy, na.rm=TRUE),to=max(summer2[[i]]$tempmoy, na.rm=TRUE), cen=median(summer2[[i]]$tempmoy, na.rm=TRUE))
+}
+```
+
+
+```{r, echo = FALSE}
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+for (i in 1:4){
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab,ylim=c(min(cityblp2[[i]]$allRRlow),max(cityblp2[[i]]$allRRhigh)-1),
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+i=5
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab,ylim=c(min(cityblp2[[i]]$allRRlow),4),
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+i=6
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab,ylim=c(min(cityblp2[[i]]$allRRlow),5),
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[7]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab, ylim=c(min(cityblp2[[i]]$allRRlow),7),
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), main=names(villes_s)[7])
+lines(cityblp2[[7]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+for (i in 8:9){
+#par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),max(cityblp2[[i]]$allRRhigh)), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+i=10
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),4.5), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+
+for (i in 11:12){
+#par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7), xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),max(cityblp2[[i]]$allRRhigh)), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+i=13
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),4), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+
+i=14
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),4), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+
+i=15
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],"overall",col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),7), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[16]],col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(0.30, 4), main=names(villes_s)[16])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+for (i in 17:18){
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7),xlab=xlab,
+  ylab="RR", ci.arg=list(density=20,angle=-45,col=4), ylim=c(min(cityblp2[[i]]$allRRlow),max(cityblp2[[i]]$allRRhigh)), main=names(villes_s)[i])
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+
+layout(matrix(c(1,2,3,4,5,6),ncol=3,nrow=2,byrow=T))
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[19]],col="blue",axes=T,lab=c(6,5,7),xlab=xlab,ylim=c(min(cityblp2[[i]]$allRRlow),max(cityblp2[[i]]$allRRhigh)),
+  ylab="RR", main=names(villes_s)[19], ci.arg=list(density=20,angle=-45,col=4))
+lines(cityblp2[[19]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+
+for (i in 20:21){
+par(mar=c(5,4,3,1),mgp=c(3,1,0),las=1,cex.axis=0.9,cex.lab=1)
+plot(cityblp1[[i]],col="blue",axes=T,lab=c(6,5,7),xlab=xlab,ylim=c(0.30,4),
+  ylab="RR", main=names(villes_s)[i], ci.arg=list(density=20,angle=-45,col=4))
+lines(cityblp2[[i]], col="red", ci="area", ci.arg=list(density=20,col=2))
+legend("topleft",c("First Period","Second Period")
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=0.7,ncol=1,inset=0.01,bty="n")
+}
+```
+
+### 2c. Create basis variable for predictions
+
+```{r}
+# PREDICTION FOR A GRID OF TEMPERATURE AND LAG VALUES
+
+# OVERALL CUMULATIVE SUMMARY ASSOCIATION FOR MAIN MODEL
+
+model.class <- class(mvall1)
+# coeff <- dlnm:::getcoef(mvall2,model.class)
+# vcova <- dlnm:::getvcov(mvall2,model.class)
+#model.link <- dlnm:::getlink(mvall1,model.class)
+
+# test<-c(coef(mvall1)[[1]], coef(mvall1)[[2]], coef(mvall1)[[3]], coef(mvall1)[[4]])
+# vcova<-matrix(ncol=4, nrow=4, dlnm:::getvcov(mvall1,model.class))
+
+cpall1 <- crosspred(bvar_1, coef=dlnm:::getcoef(mvall1,model.class), vcov=dlnm:::getvcov(mvall1,model.class), model.link="log",by=0.1,from=min(tempall_1, na.rm=TRUE),to=max(tempall_1, na.rm=TRUE), cen=median(tempall, na.rm=TRUE))
+
+cpall2 <- crosspred(bvar_2, coef=dlnm:::getcoef(mvall2,model.class), vcov=dlnm:::getvcov(mvall2,model.class), model.link="log",by=0.1,from=min(tempall_2, na.rm=TRUE),to=max(tempall_2, na.rm=TRUE), cen=median(tempall, na.rm=TRUE))
+
+```
+
+
+
+### 2d. Create Overall Pooled Predictions
+
+
+```{r, echo=FALSE}
+x<-lapply(villes_s,function(x){x[,c("tempmoy", "day")]})
+x1<-list()
+x2<-list()
+
+for (i in 1:length(villes_s)){
+  x1[[i]]<-x[[i]][which(x[[i]]$day > 31 & x[[i]]$day<77),]
+  x2[[i]]<-x[[i]][which(x[[i]]$day > 76 & x[[i]]$day<124),]
+  }
+
+names(x1)<-names(villes_s)
+names(x2)<-names(villes_s)
+
+tempall1<-rbind(x1[["avignon"]],x1[["douai-lens"]],x1[["bordeaux"]],x1[["clermont"]],x1[["dijon"]],x1[["grenoble"]], x1[["lehavre"]], x1[["lille"]],x1[["lyon"]],x1[["marseille"]], x1[["montpellier"]],x1[["nancy"]],x1[["nantes"]],x1[["nice"]],x1[["paris"]],x1[["rennes"]],x1[["rouen"]],x1[["saint_etienne"]],x1[["strasbourg"]],x1[["toulon"]],x1[["toulouse"]])
+
+tempall2<-rbind(x2[["avignon"]],x2[["douai-lens"]],x2[["bordeaux"]],x2[["clermont"]],x2[["dijon"]],x2[["grenoble"]], x2[["lehavre"]], x2[["lille"]],x2[["lyon"]],x2[["marseille"]], x2[["montpellier"]],x2[["nancy"]],x2[["nantes"]],x2[["nice"]],x2[["paris"]],x2[["rennes"]],x2[["rouen"]],x2[["saint_etienne"]],x2[["strasbourg"]],x2[["toulon"]],x2[["toulouse"]])
+```
+
+
+
+```{r, echo=FALSE, fig.dim=c(8,8)}
+
+xname="Temperature (˚C)"
+
+layout(matrix(1:3,ncol=1),heights=c(0.8,0.20,0.35))
+par(mar=c(0.2,5,2,1),las=1,cex.axis=0.8,cex.lab=1)
+plot(cpall1,col="blue",lab=c(6,5,7),axes=F, xlab="Temperature (C)",
+  ylab="RR",  ci.arg=list(density=20,angle=-45,col=4), xlim=c(min(xvar_1),max(xvar_2)), ylim=c(0.50,5.5))
+lines(cpall2, col="red", ci="area", ci.arg=list(density=20,col=2), xlim=c(min(xvar_1),max(xvar_2)))
+legend("topleft",c("First Period \n (I²=1.0%, X² test p-val = 0.8181)","Second Period \n (I²=47.4%, X² test p-val = 0.0000)"), horiz = TRUE
+  ,xpd = TRUE,col=c("blue","red"),lwd=2,bg="white"
+  ,cex=1.3,ncol=1,inset=0.01,bty="n")
+# abline(v=mft[i],lty=1, col="blue")
+# abline(v=quantile(villes_s[[i]]$tempmoy,c(0.1,0.75,0.90)),lty=2)
+axis(2,at=c(0,0.50, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5))
+par(mar=c(0.1,5,0.3,1))
+hist(tempall1$tempmoy,col=grey(0.95),ylab="Temp Freq\nFirst Period", xlim=c(min(xvar_1),max(xvar_2)),breaks=20, axes=F, main="")
+# abline(v=mft[i],lty=1, col="blue")
+# abline(v=quantile(villes_s[[i]]$tempmoy,c(0.1,0.75,0.90)),lty=2)
+axis(2,at=0:50*100)
+par(mar=c(4,5,0.3,1))
+hist(tempall2$tempmoy,col=grey(0.95),ylab="Temp Freq\nSecond Period",xlim=c(min(xvar_1),max(xvar_2)), breaks=20, main="", xlab=xname)
+axis(2,at=0:50*100)
+```
+
+

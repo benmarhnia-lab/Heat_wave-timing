@@ -1,0 +1,598 @@
+---
+title: "Effect of different Heat wave timing on cardiovascular and respiratory mortality in France - Analysis with categorical variable for Heat wave order"
+author: "Anna Alari and Noemie Letellier"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+```
+
+
+```{r, echo=FALSE, warning = FALSE, message=FALSE}
+library(xlsx)
+library(Hmisc)
+library(lubridate)
+library(effects)
+library(ggplot2)
+library(prettyR)
+library(segmented)
+library(splines)
+library(mgcViz)
+library(ggeffects)
+library(devtools)
+library(zoo)
+library(mvmeta)
+library(dlnm)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library("writexl")
+library(metafor)
+library(forestplot)
+library(hrbrthemes)
+library(tidyverse)
+library(ggridges)
+library(viridis)
+library(ggpubr)
+library(R.utils)
+library(meta)
+library(jtools)
+library(huxtable)
+library(gdata)
+```
+
+
+
+```{r}
+load("C:/Users/aalari/Dropbox/Noemie/FInal Analysis - SpF + CepiDC/villes_s.RData")
+
+```
+
+
+
+The aim of the following analysis is to estimate whether heat waves occuring at different timing during the summer may have different effect on mortality. 
+
+Heat wave variable was created according to the Meteo France definition for extreme weather events. 
+Heat waves were defined as periods where the mean daily temperature exceeded the 97.5th percentile of the local (within each urban agglomeration) mean temperature distribution over the entire year (*initial threshold*) for at least three consecutive days, and for which at least one day recorded a mean daily temperature above the 99.5th percentile of the local temperature distribution for the entire year  (*peak threshold*). For references, see Soubeyroux et al. 2016 (DOI: 10.4267/2042/60704) and Pascal et al. 2021 (DOI: https://doi.org/10.1016/j.atmosenv.2021.118249). 
+
+
+
+
+
+
+We still have 4 heat wave episodes in a summer in some cities: Grenoble, Lyon, Montpellier and Saint Entienne in 2003, Nancy in 2015. 
+3 Heat waves episodes in Marseille and Lyon in 2015 
+
+## Model
+We just put in the model the "order heat wave" variable, which allow to consider mortality risk for non heat-wave days compared to mortality risk during heat-wave days, and allow also the risk of mortality to differ by heat wave timing (inspired by Anderson and Bell, 2011).
+
+- The category "0" will be taken as the reference category in the model 
+- the category 1 is for first heat wave of the season
+- the category 2 is for heat waves other than the first
+
+
+
+
+### Cardiovascular Deaths
+```{r, message=FALSE}
+m.outcome4bis<-list()
+v.coeffHW1<-c()
+v.sterrHW1<-c()
+v.coeffHW2<-c()
+v.sterrHW2<-c()
+resultsHW1<-matrix(NA,nrow = 21,ncol=4)
+colnames(resultsHW1)<-c("city","HW1","HW1_2.5","HW1_97.5")
+resultsHW1[,1]<-names(villes_s)
+
+resultsHW2<-matrix(NA,nrow = 21,ncol=4)
+colnames(resultsHW2)<-c("city","HW2","HW2_2.5","HW2_97.5")
+resultsHW2[,1]<-names(villes_s)
+
+
+for (i in 1:length(villes_s)){
+m.outcome4bis[[i]]<-glm(cv_tot~orderhw+annee+Jours+Vacances,data=villes_s[[i]],family=quasipoisson)
+v.coeffHW1[i]<-m.outcome4bis[[i]]$coefficients[2]
+v.sterrHW1[i]<-summary(m.outcome4bis[[i]])$coefficients[2, 2]
+v.coeffHW2[i]<-m.outcome4bis[[i]]$coefficients[3]
+v.sterrHW2[i]<-summary(m.outcome4bis[[i]])$coefficients[3, 2]
+resultsHW1[i,2]<-m.outcome4bis[[i]]$coefficients[2]
+resultsHW1[i,3:4]<-confint.default(m.outcome4bis[[i]])[2,]
+resultsHW2[i,2]<-m.outcome4bis[[i]]$coefficients[3]
+resultsHW2[i,3:4]<-confint.default(m.outcome4bis[[i]])[3,]
+}
+
+names(m.outcome4bis)<-names(villes_s)
+```
+
+### Results per city 
+<details>
+  <summary> Avignon </summary>
+```{r}
+summ(m.outcome4bis[[1]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> BM </summary>
+```{r}
+summ(m.outcome4bis[[2]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Bordeaux </summary>
+```{r}
+summ(m.outcome4bis[[3]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Clermont-Ferrand </summary>
+```{r}
+summ(m.outcome4bis[[4]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Dijon </summary>
+```{r}
+summ(m.outcome4bis[[5]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Grenoble </summary>
+```{r}
+summ(m.outcome4bis[[6]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> La Havre </summary>
+```{r}
+summ(m.outcome4bis[[7]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Lille </summary>
+```{r}
+summ(m.outcome4bis[[8]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Lyon </summary>
+```{r}
+summ(m.outcome4bis[[9]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Marseille </summary>
+```{r}
+summ(m.outcome4bis[[10]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Montpellier </summary>
+```{r}
+summ(m.outcome4bis[[11]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Nancy </summary>
+```{r}
+summ(m.outcome4bis[[12]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Nantes </summary>
+```{r}
+summ(m.outcome4bis[[13]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Nice </summary>
+```{r}
+summ(m.outcome4bis[[14]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Paris </summary>
+```{r}
+summ(m.outcome4bis[[15]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Rennes </summary>
+```{r}
+summ(m.outcome4bis[[16]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Rouen </summary>
+```{r}
+summ(m.outcome4bis[[17]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Saint-Etienne </summary>
+```{r}
+summ(m.outcome4bis[[18]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Strasbourg </summary>
+```{r}
+summ(m.outcome4bis[[19]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Toulon </summary>
+```{r}
+summ(m.outcome4bis[[20]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Toulouse </summary>
+```{r}
+summ(m.outcome4bis[[21]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+### Meta-analysis: {.tabset .tabset-fade}
+
+#### For First Heat Weave Category:
+```{r, echo=FALSE, fig.width=7, fig.height=7, fig.align = "center"}
+metaHW1<-rma(v.coeffHW1,sei=v.sterrHW1)
+summary(metaHW1)
+
+forest(metaHW1,transf = exp, slab = names(villes_s),refline=1,xlab="RR First Heat Wave", header="City")
+```
+
+#### For Second or higher Heat Waves:
+```{r, echo=FALSE, fig.width=7, fig.height=7, fig.align = "center"}
+metaHW2<-rma(v.coeffHW2,sei=v.sterrHW2)
+summary(metaHW2)
+
+forest(metaHW2,transf = exp, slab = names(villes_s),refline=1,xlab="RR Second Heat Wave", header="City")
+
+```
+
+#### Comparing First and Second or higher Heat Wave effect:
+
+
+```{r, echo=FALSE, fig.width=8, fig.height=8, fig.align = "center"}
+
+metaHW1bis<-metagen(TE=v.coeffHW1,seTE=v.sterrHW1)
+metaHW2bis<-metagen(TE=v.coeffHW2,seTE=v.sterrHW2)
+
+resultsHW1<-as.data.frame(resultsHW1)
+resultsHW2<-as.data.frame(resultsHW2)
+
+resultsHW1[,1]<-as.character(resultsHW1[,1])
+resultsHW2[,1]<-as.character(resultsHW2[,1])
+
+for (i in 2:4){
+resultsHW1[,i]<-as.numeric(as.character(resultsHW1[,i]))
+resultsHW2[,i]<-as.numeric(as.character(resultsHW2[,i]))
+}
+
+resultsHW1[,2:4]<-exp(resultsHW1[,2:4])
+resultsHW2[,2:4]<-exp(resultsHW2[,2:4])
+
+resultsHW1$city<-as.factor(as.character(resultsHW1$city))
+resultsHW2$city<-as.factor(as.character(resultsHW2$city))
+
+order<-c("bordeaux","lehavre","nantes","rennes","rouen","clermont","dijon","grenoble","lyon","nancy","saint_etienne", "strasbourg","BM","lille", "paris","toulouse","avignon","marseille","montpellier","nice","toulon")
+
+resultsHW1$city <- reorder.factor(resultsHW1$city, new.order=order) 
+resultsHW2$city <- reorder.factor(resultsHW2$city, new.order=order) 
+
+resultsHW1$city<-factor(resultsHW1$city,levels(resultsHW1$city), labels=c("Bordeaux","Le Havre","Nantes","Rennes","Rouen","Clermont-Ferrant","Dijon","Grenoble","Lyon","Nancy","Saint-Etienne", "Strasbourg","Douai-Lens","Lille", "Paris","Toulouse","Avignon","Marseille","Montpellier","Nice","Toulon")) 
+
+resultsHW2$city<-factor(resultsHW2$city,levels(resultsHW2$city), labels=c("Bordeaux","Le Havre","Nantes","Rennes","Rouen","Clermont-Ferrant","Dijon","Grenoble","Lyon","Nancy","Saint-Etienne", "Strasbourg","Douai-Lens","Lille", "Paris","Toulouse","Avignon","Marseille","Montpellier","Nice","Toulon")) 
+
+resultsHW1 <-resultsHW1[order(resultsHW1$city),]
+resultsHW2 <- resultsHW2[order(resultsHW2$city),]
+
+resultsHW1$city<-as.character(resultsHW1$city)
+resultsHW2$city<-as.character(resultsHW2$city)
+
+
+
+
+forestplot(resultsHW1[,1],legend = c("First Heat Wave \n Pooled RR: 1.30 [1.17, 1.45] \n (I²=78.77%, X² test p-val < .0001)", "Second or Higher Heat Wave \n Pooled RR: 1.38 [1.23, 1.53] \n (I²=59.94%, X² test p-val < 0.0001)"), 
+           mean = cbind(resultsHW1[,2], resultsHW2[,2]),
+           lower = cbind(resultsHW1[,3], resultsHW2[,3]),
+           upper = cbind(resultsHW1[,4], resultsHW2[,4]),
+           col = fpColors(box = c("blue", "darkred")),
+           xlab = "RR", zero = 1,lty.ci = c(1, 2))
+
+
+```
+
+
+### Respiratory Deaths
+```{r, message=FALSE}
+m.outcome4bis<-list()
+v.coeffHW1<-c()
+v.sterrHW1<-c()
+v.coeffHW2<-c()
+v.sterrHW2<-c()
+resultsHW1<-matrix(NA,nrow = 21,ncol=4)
+colnames(resultsHW1)<-c("city","HW1","HW1_2.5","HW1_97.5")
+resultsHW1[,1]<-names(villes_s)
+
+resultsHW2<-matrix(NA,nrow = 21,ncol=4)
+colnames(resultsHW2)<-c("city","HW2","HW2_2.5","HW2_97.5")
+resultsHW2[,1]<-names(villes_s)
+
+
+for (i in 1:length(villes_s)){
+m.outcome4bis[[i]]<-glm(respi_tot~orderhw+annee+Jours+Vacances,data=villes_s[[i]],family=quasipoisson)
+v.coeffHW1[i]<-m.outcome4bis[[i]]$coefficients[2]
+v.sterrHW1[i]<-summary(m.outcome4bis[[i]])$coefficients[2, 2]
+v.coeffHW2[i]<-m.outcome4bis[[i]]$coefficients[3]
+v.sterrHW2[i]<-summary(m.outcome4bis[[i]])$coefficients[3, 2]
+resultsHW1[i,2]<-m.outcome4bis[[i]]$coefficients[2]
+resultsHW1[i,3:4]<-confint.default(m.outcome4bis[[i]])[2,]
+resultsHW2[i,2]<-m.outcome4bis[[i]]$coefficients[3]
+resultsHW2[i,3:4]<-confint.default(m.outcome4bis[[i]])[3,]
+}
+
+names(m.outcome4bis)<-names(villes_s)
+```
+
+### Results per city 
+<details>
+  <summary> Avignon </summary>
+```{r}
+summ(m.outcome4bis[[1]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> BM </summary>
+```{r}
+summ(m.outcome4bis[[2]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Bordeaux </summary>
+```{r}
+summ(m.outcome4bis[[3]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Clermont-Ferrand </summary>
+```{r}
+summ(m.outcome4bis[[4]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Dijon </summary>
+```{r}
+summ(m.outcome4bis[[5]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Grenoble </summary>
+```{r}
+summ(m.outcome4bis[[6]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> La Havre </summary>
+```{r}
+summ(m.outcome4bis[[7]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Lille </summary>
+```{r}
+summ(m.outcome4bis[[8]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Lyon </summary>
+```{r}
+summ(m.outcome4bis[[9]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Marseille </summary>
+```{r}
+summ(m.outcome4bis[[10]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Montpellier </summary>
+```{r}
+summ(m.outcome4bis[[11]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Nancy </summary>
+```{r}
+summ(m.outcome4bis[[12]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Nantes </summary>
+```{r}
+summ(m.outcome4bis[[13]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Nice </summary>
+```{r}
+summ(m.outcome4bis[[14]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Paris </summary>
+```{r}
+summ(m.outcome4bis[[15]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Rennes </summary>
+```{r}
+summ(m.outcome4bis[[16]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Rouen </summary>
+```{r}
+summ(m.outcome4bis[[17]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Saint-Etienne </summary>
+```{r}
+summ(m.outcome4bis[[18]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+<details>
+  <summary> Strasbourg </summary>
+```{r}
+summ(m.outcome4bis[[19]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Toulon </summary>
+```{r}
+summ(m.outcome4bis[[20]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+<details>
+  <summary> Toulouse </summary>
+```{r}
+summ(m.outcome4bis[[21]], exp = TRUE, confint = TRUE, digits = 3)
+```
+</details> 
+
+
+I have to exclude Clermont Ferrand from the results because of estimation problems. 
+
+### Meta-analysis: {.tabset .tabset-fade}
+
+#### For First Heat Weave Category:
+```{r, echo=FALSE, fig.width=7, fig.height=7, fig.align = "center"}
+v.coeffHW1<-v.coeffHW1[-4]
+v.sterrHW1<-v.sterrHW1[-4]
+
+metaHW1<-rma(v.coeffHW1,sei=v.sterrHW1)
+summary(metaHW1)
+
+forest(metaHW1,transf = exp, slab = names(villes_s[-4]),refline=1,xlab="RR First Heat Wave", header="City")
+```
+
+#### For Second or Higher Heat Waves:
+```{r, echo=FALSE, fig.width=7, fig.height=7, fig.align = "center"}
+v.coeffHW2<-v.coeffHW2[-4]
+v.sterrHW2<-v.sterrHW2[-4]
+
+metaHW2<-rma(v.coeffHW2,sei=v.sterrHW2)
+summary(metaHW2)
+
+forest(metaHW2,transf = exp, slab = names(villes_s[-4]),refline=1,xlab="RR Second Heat Wave", header="City")
+
+```
+
+#### Comparing First with Others Heat Wave effect:
+
+
+```{r, fig.width=8, fig.height=8, fig.align = "center", echo=FALSE}
+metaHW1bis<-metagen(TE=v.coeffHW1,seTE=v.sterrHW1)
+metaHW2bis<-metagen(TE=v.coeffHW2,seTE=v.sterrHW2)
+
+resultsHW1<-as.data.frame(resultsHW1[-4,])
+resultsHW2<-as.data.frame(resultsHW2[-4,])
+
+resultsHW1[,1]<-as.character(resultsHW1[,1])
+resultsHW2[,1]<-as.character(resultsHW2[,1])
+
+
+for (i in 2:4){
+resultsHW1[,i]<-as.numeric(as.character(resultsHW1[,i]))
+resultsHW2[,i]<-as.numeric(as.character(resultsHW2[,i]))
+}
+
+resultsHW1[,2:4]<-exp(resultsHW1[,2:4])
+resultsHW2[,2:4]<-exp(resultsHW2[,2:4])
+
+resultsHW1$city<-as.factor(as.character(resultsHW1$city))
+resultsHW2$city<-as.factor(as.character(resultsHW2$city))
+
+order<-c("bordeaux","lehavre","nantes","rennes","rouen","clermont","dijon","grenoble","lyon","nancy","saint_etienne", "strasbourg","BM","lille", "paris","toulouse","avignon","marseille","montpellier","nice","toulon")
+
+resultsHW1$city <- reorder.factor(resultsHW1$city, new.order=order) 
+resultsHW2$city <- reorder.factor(resultsHW2$city, new.order=order) 
+
+resultsHW1$city<-factor(resultsHW1$city,levels(resultsHW1$city), labels=c("Bordeaux","Le Havre","Nantes","Rennes","Rouen","Clermont-Ferrant","Dijon","Grenoble","Lyon","Nancy","Saint-Etienne", "Strasbourg","Douai-Lens","Lille", "Paris","Toulouse","Avignon","Marseille","Montpellier","Nice","Toulon")) 
+
+resultsHW2$city<-factor(resultsHW2$city,levels(resultsHW2$city), labels=c("Bordeaux","Le Havre","Nantes","Rennes","Rouen","Clermont-Ferrant","Dijon","Grenoble","Lyon","Nancy","Saint-Etienne", "Strasbourg","Douai-Lens","Lille", "Paris","Toulouse","Avignon","Marseille","Montpellier","Nice","Toulon")) 
+
+resultsHW1 <-resultsHW1[order(resultsHW1$city),]
+resultsHW2 <- resultsHW2[order(resultsHW2$city),]
+
+resultsHW1$city<-as.character(resultsHW1$city)
+resultsHW2$city<-as.character(resultsHW2$city)
+
+
+forestplot(resultsHW1[,1],legend = c("First Heat Wave \n Pooled RR: 1.56 [1.33, 1.83] \n (I²=55.22%, X² test p-val < .0001)", "Second or Higher Heat Wave \n Pooled RR: 1.74 [1.45, 2.08] \n (I²=46.91%, X² test p-val = 0.0164)"), 
+           mean = cbind(resultsHW1[,2], resultsHW2[,2]),
+           lower = cbind(resultsHW1[,3], resultsHW2[,3]),
+           upper = cbind(resultsHW1[,4], resultsHW2[,4]),
+           col = fpColors(box = c("blue", "darkred")),
+           xlab = "RR", zero = 1,lty.ci = c(1, 2))
+
+
+
+```
+
+
